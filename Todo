@@ -1,0 +1,198 @@
+TODO:
+# later:
+* apply to pcm2java project
+* maybe add additions to reactions generator/builder? (fluent builder)
+* rebase with master branch
+* test if formatting works after rebase (if it doesn't, not that important)
+* maybe add formatter entries for newly added elements
+* optional: add tests related to changes
+* optional: look into performance?
+* update generated code for other projects inside vitruv
+* get tests to pass
+  * tests seem to run fine if started as plugin tests from within plugin eclipse instance
+* error when auto complete on regular import -> check if this is also the case with the unmodified reactions language 
+* check the references to the ReactionsFile added in the generator: those might no longer be needed and could be reverted to reduce diff
+* moving common override fragment stuff into shared fragment results in duplicate fields in the generated package
+  * also: Reaction will extend ReactionsSegmentOverride, is there a way to simply include the contents?
+ReactionsSegmentOverride:
+	(overriddenImportPath=ReactionsImportPath)? overriddenReactionsSegment=[ReactionsSegment];
+Reaction:
+	(documentation=ML_COMMENT)?
+	'reaction' (ReactionsSegmentOverride '::')? (name=ValidID)? '{'
+		trigger=Trigger
+		callRoutine=ReactionRoutineCall
+	'}';
+  * this might no longer be an issue: reactions and routines use different syntax now for the overrides
+
+
+# now, safe:
+* no cyclic imports: cannot import self directly or indirectly by importing another segment
+* validation: check for name-clashes in included routines
+* validation: check for name-clashes in included routines facades
+  
+* add 'using qualified name' flag to import: using field instead of directly including
+* directly include imported routines in local routines facade instead of via field
+  * if name clash -> error
+    * also check for name clashes between imports -> error
+  * also include transitive imports: if imported without qualified names -> directly, if imported with qualified names -> as field
+  * optional: maybe it can forward the facade request to the the providers of the imported segments when no overrides exist
+    * result: smaller provider implementation?
+	
+* RoutinesFacadeProvider interface instead of method inside AbstractExecutor, pass that around instead
+  * implemented either by separate class or by executor
+  * Pass routines facades around? Or pass execution/call path around and let everyone request the routine facade for that himself?
+    * Use already existing CallHierarchy for that?
+
+* allow importing of routines only
+  * requires different validation rules?
+    * it might be possible to allow importing routines even if importing reactions as a whole is not allowed
+
+* no duplicate reactions imports, not even at root
+  * so that the there exists only one path in the import hierarchy for an imported reaction
+  * overriding of transitive reactions/routines via: B.A::Reaction/RoutineName (no import for B.A required/possible!)
+  
+  * Example: C->B->A
+	* additional reactions import C->A, C->B, C->D->A, or C->D->B  => error
+	* (import of routines-only allowed however)
+	* reaction from A executed, asks C for A facade with no call-hierarchy (reaction is start of call hierarchy)
+	  * C knows that reaction from A was imported via C->B->A, and therefore that there exists a facade B.A
+	  * if C overrides any routines in B.A, it has created an facade C.B.A extending B.A -> return that
+	  * else: return B.A (could also be done by forwarding the request to facade provider of B)
+  
+# now, unsafe:
+* !!! do scopes get called while cross-refs cannot be resolved yet?
+  * if yes: problem to scope for reaction and routine overrides which reference transitively imported reactions/routines!
+  * currently reaction overrides scope uses only the direct imports!
+	* consider: A->B->C, and C::reactionName
+	* A cannot import C, because duplicate reaction imports are forbidden
+  * -> possible solution: parse string (ValidId, QualifiedName/ReactionsImportPath) instead of using cross-ref
+    * but then: no auto-completion, etc..
+  * -> possible solution: maybe if scoping is only sometimes called while cross-refs cannot be resolved, it still works when called and cross-refs can be resolved
+
+* suggest lower or upper case reactions segment names, similar to reactions and routines?
+  * currently/now: warning if there is a reactions segment found with a matching name regardless of upper/lower case first character
+  * duplicate named reactions segments can lead to conflicts: lower-case name is used for package names
+	* use errors instead of warnings when finding similarly named reactions segment globally?
+* !!! renamed executionState -> reactionExecutionState variable in facade! needs to be updated everywhere -> check if correctly updated
+* !!! renamed calledBy -> caller variable in facade! needs to be updated everywhere -> check if correctly updated
+
+* overriding currently requires original reactions segment name: maybe somehow allow overriding of routines without qualified names (or partly qualified due to transitive qualified-name import)?
+  * allow '::routineName' (no segment/path) for included routines?
+    * only 'routineName' would lead to name clash, because it is no recognised as override
+		* add 'override' keyword?
+
+* class names generators: add 'private static val PACKAGE_SEPARATOR = ".";' and use that everywhere instead?
+  
+* ReactionsLanguageUtil.getFormattedName: Really required to first use parsed name? Currently this might only be used by validator and by ui project inside OutlineTreeProvider
+
+* Consider reactions import A->B->C
+  * (regardless of if B overrides reaction of C)
+  * A wants to override that reaction, should it have to use C::reaction (current behavior), or B::reaction?
+    * with B::reaction, A wouldn't need to know where the reaction originally came from
+	  * 'inheritance behavior': the C reactions are considered to be part of B now from A's point of view
+	* but: the behavior of the reactions of C depend on routines in C, which need to be overridden via C::routine anyways
+	  * so in the end A has to know where which reaction comes from anyways
+
+# Questions:
+* validator -> getRoutineSignature -> metaclass.javaClassName safe/good enough?
+  * Does not include the special cases from InputTypesPackage (see ParameterGenerator)
+* can reactions trigger other reactions? maybe due to the model changes they apply?
+  * if yes, does vitruv execute the reaction for this change before the previous reaction is finished executing?
+	* if yes: need to also capture and restore facade state before and after reaction execution (like I am currently doing)
+		* maybe also add code comment explaining then why this is/might be needed there
+* ReactionsImportPath: Which one to use? Can the first one use scoping (instead of only content proposal)?
+	* segments += ValidID ('.' segments += ValidID)*;
+	* ValidID ('.' ValidID)*;
+	* in the first case: 2 ReactionsImportPath classes: dslruntime and model element; both basically representing the same thing.. idea for other name for one of them?
+	* maybe add dependency for xtext.naming package in dslruntime and use QualifiedName everywhere instead?
+
+# optional:
+* make import of routines-only the default, and require 'import reactions <segment>' when importing reactions AND routines?
+* maybe later: is it possible to create facades once, and pass around the execution state and called-by parameters?
+  * but: same routine might require different facade depending on who called it / call-path
+  * also: facade methods cannot have additional parameters, because those would be visible from inside the reactions/routines code blocks
+* maybe: is it possible to lazily initialize the routine facade fields, but still access them like field (and not like methods) inside reactions code blocks? maybe via xtend @Lazy ?
+* maybe associate routines facade fields with original segment? so open declaration opens the original segment with that name, and not the one overriding (importing) it
+  * check if associations are required to keep that way, due to code generation relying on it to determine affected files?
+* maybe not at all: Implement imports without qualified names via sequence of inheritance?
+  * Would internally require one RoutinesFacade class per import and chaining those
+  * Advantage: Not generating duplicate methods in the facade, which could simply be referenced when using inheritance
+* feature idea: allow specifying an import name/alias when importing using qualified names, and then allow duplicate imports, as long as the alias is different:
+  * Would allow importing a reactions segment again to access its original routines, or use them with different overrides: B->A, B->A as A_original, or B->A as A2 and then different overrides A2::routine
+
+# Done:
+* Wrote down specification.
+  * Also made some changes to the previously discussed behavior of importing of transitively imported routines.
+  * And that imports are no longer required when overriding reactions/routines from transitively imported segments (no 'import A.B').
+  * And that reactions need to be on a single path inside the import hierarchy.
+* check if direct self-import is already not possible due to scoping -> correct, not possible
+* move language utility methods from ReactionsLanguageHelper into util package or similar
+  * and then export that instead for use in ui project
+* validation: require same model pair when importing something
+* validation: no override of non-existent reactions/routines (compare signatures for routines, names for reactions)
+---
+* language change: reactions names are no longer optional (required for overrides)
+  * previously there could only exist one reaction without name anyways..
+* language change: forbid routine names starting with _ to prevent name clashes with internal (not visible) methods of the routines facade
+
+# To test:
+* validation: require same model pair when importing something
+* validation: no override of non-existent reactions/routines (compare signatures for routines, names for reactions)
+* language change: reactions names are no longer optional (required for overrides)
+* language change: forbid routine names starting with _ to prevent name clashes with internal (not visible) methods of the routines facade
+
+
+ERRORS:
+1) NPE during Project>Clean (or build due to file save might trigger this as well) with open editor window
+* this code was completely changed, might no longer be an issue
+1    [Worker-12] ERROR org.eclipse.xtext.xbase.jvmmodel.JvmModelAssociator  - Error calling inferrer
+java.lang.NullPointerException
+	at tools.vitruv.dsls.reactions.codegen.helper.ReactionsLanguageHelper.lambda$6(ReactionsLanguageHelper.java:334)
+	at org.eclipse.xtext.xbase.lib.IteratorExtensions.exists(IteratorExtensions.java:263)
+	at org.eclipse.xtext.xbase.lib.IterableExtensions.exists(IterableExtensions.java:222)
+	at tools.vitruv.dsls.reactions.codegen.helper.ReactionsLanguageHelper.findImportedReactionsSegmentRoot(ReactionsLanguageHelper.java:336)
+	at tools.vitruv.dsls.reactions.codegen.helper.ReactionsLanguageHelper.lambda$7(ReactionsLanguageHelper.java:342)
+	at org.eclipse.xtext.xbase.lib.internal.FunctionDelegate.apply(FunctionDelegate.java:42)
+	at com.google.common.collect.Lists$TransformingRandomAccessList$1.transform(Lists.java:651)
+	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:47)
+	at org.eclipse.xtext.xbase.lib.IteratorExtensions.findFirst(IteratorExtensions.java:107)
+	at org.eclipse.xtext.xbase.lib.IterableExtensions.findFirst(IterableExtensions.java:80)
+	at tools.vitruv.dsls.reactions.codegen.helper.ReactionsLanguageHelper.findImportedReactionsSegmentRoot(ReactionsLanguageHelper.java:347)
+	at tools.vitruv.dsls.reactions.codegen.helper.ReactionsLanguageHelper.getImportedReactionsSegmentRoot(ReactionsLanguageHelper.java:317)
+	at tools.vitruv.dsls.reactions.codegen.classgenerators.ImportedRoutinesFacadeClassGenerator.lambda$1(ImportedRoutinesFacadeClassGenerator.java:56)
+	at org.eclipse.xtext.xbase.lib.ObjectExtensions.operator_doubleArrow(ObjectExtensions.java:139)
+	at tools.vitruv.dsls.reactions.codegen.classgenerators.ImportedRoutinesFacadeClassGenerator.generateBody(ImportedRoutinesFacadeClassGenerator.java:79)
+	at tools.vitruv.dsls.reactions.jvmmodel.ReactionsLanguageJvmModelInferrer.lambda$0(ReactionsLanguageJvmModelInferrer.java:87)
+	at org.eclipse.xtext.xbase.jvmmodel.JvmModelAssociator$1.run(JvmModelAssociator.java:397)
+	at org.eclipse.xtext.xbase.jvmmodel.JvmModelAssociator.installDerivedState(JvmModelAssociator.java:407)
+	at org.eclipse.xtext.resource.DerivedStateAwareResource.installDerivedState(DerivedStateAwareResource.java:242)
+	at org.eclipse.xtext.xbase.resource.BatchLinkableResource.getContents(BatchLinkableResource.java:148)
+	at org.eclipse.xtext.xbase.typesystem.internal.LogicalContainerAwareBatchTypeResolver.getEntryPoints(LogicalContainerAwareBatchTypeResolver.java:44)
+	at org.eclipse.xtext.xbase.typesystem.internal.DefaultBatchTypeResolver.getTypeResolver(DefaultBatchTypeResolver.java:84)
+	at org.eclipse.xtext.xbase.typesystem.internal.CachingBatchTypeResolver$1.get(CachingBatchTypeResolver.java:49)
+	at org.eclipse.xtext.xbase.typesystem.internal.CachingBatchTypeResolver$1.get(CachingBatchTypeResolver.java:46)
+	at org.eclipse.xtext.util.OnChangeEvictingCache.get(OnChangeEvictingCache.java:77)
+	at org.eclipse.xtext.xbase.typesystem.internal.CachingBatchTypeResolver.doResolveTypes(CachingBatchTypeResolver.java:46)
+	at org.eclipse.xtext.xbase.typesystem.internal.AbstractBatchTypeResolver.resolveTypes(AbstractBatchTypeResolver.java:69)
+	at org.eclipse.xtext.xbase.resource.BatchLinkingService.resolveBatched(BatchLinkingService.java:71)
+	at org.eclipse.xtext.xbase.resource.BatchLinkableResource.resolveLazyCrossReferences(BatchLinkableResource.java:165)
+	at org.eclipse.xtext.EcoreUtil2.resolveLazyCrossReferences(EcoreUtil2.java:498)
+	at org.eclipse.xtext.builder.clustering.ClusteringBuilderState.doUpdate(ClusteringBuilderState.java:230)
+	at org.eclipse.xtext.builder.builderState.AbstractBuilderState.update(AbstractBuilderState.java:116)
+	at org.eclipse.xtext.builder.impl.XtextBuilder.doBuild(XtextBuilder.java:287)
+	at org.eclipse.xtext.builder.impl.XtextBuilder.fullBuild(XtextBuilder.java:319)
+	at org.eclipse.xtext.builder.impl.XtextBuilder.build(XtextBuilder.java:155)
+	at org.eclipse.core.internal.events.BuildManager$2.run(BuildManager.java:735)
+	at org.eclipse.core.runtime.SafeRunner.run(SafeRunner.java:42)
+	at org.eclipse.core.internal.events.BuildManager.basicBuild(BuildManager.java:206)
+	at org.eclipse.core.internal.events.BuildManager.basicBuild(BuildManager.java:246)
+	at org.eclipse.core.internal.events.BuildManager$1.run(BuildManager.java:301)
+	at org.eclipse.core.runtime.SafeRunner.run(SafeRunner.java:42)
+	at org.eclipse.core.internal.events.BuildManager.basicBuild(BuildManager.java:304)
+	at org.eclipse.core.internal.events.BuildManager.basicBuildLoop(BuildManager.java:360)
+	at org.eclipse.core.internal.events.BuildManager.build(BuildManager.java:383)
+	at org.eclipse.core.internal.events.AutoBuildJob.doBuild(AutoBuildJob.java:142)
+	at org.eclipse.core.internal.events.AutoBuildJob.run(AutoBuildJob.java:232)
+	at org.eclipse.core.internal.jobs.Worker.run(Worker.java:56)
+	
+2) 
