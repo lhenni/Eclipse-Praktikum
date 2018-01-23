@@ -1,0 +1,121 @@
+Modularization of the Reactions Language
+Praktikum Software Quality Engineering mit Eclipse WS 17/18
+Lukas Hennig, 1699498
+-------------------------------------------------------------------------------
+
+§1 Short description of the Reactions Language and its (current) structure:
+
+The Reactions Language is part of the Vitruvius framework (short: Vitruv). Vitruv propagates changes between models (possibly of different metamodels) in order to keep them consistent.
+The Reactions Language is a Xtext DSL used to define 'reactions' which react to model changes and apply corresponding transformations to another model. In order to reduce duplicate transformation code, the Reactions Language also allows defining 'routines'. Those contain the common transformation code and can be called by reactions and other routines.
+Reactions and routines are located in .reactions files and grouped in 'reactions segments'. Each reactions segment defines the metamodel pair its reactions apply to. Reactions and routines can only call routines located in the same reactions segment.
+
+The reactions and routines of a project get compiled to Java code. Each reaction ends up in a corresponding Java class located at 'mir.reactions<MetamodelPairName>.<ReactionsSegmentName>.<ReactionName>.java', and each routine ends up in a corresponding Java class located at 'mir.routines.<ReactionsSegmentName>.<RoutineName>.java'.
+Additionally an 'executor' class is generated for each reactions segment: It is located inside the corresponding reactions package and handles forwarding of model changes from Vitruv to the reactions of that reactions segment.
+And for all reactions segments applying to the same metamodel pair a single 'ChangePropagationSpecification' class gets generated at the root of the reactions package for that metamodel pair. A Vitruv Application passes this to Vitruv and it then receives and forwards changes affecting that metamodel pair to all the executors, and by that to all the reactions, handling those model changes.
+Additionally a 'RoutinesFacade' class gets generated for each reactions segment, located inside the corresponding routines package. It contains methods for calling the routines contained in that reactions segment and keeps track of the call hierarchy (for debugging purposes). All reactions and routines use instances of that routines facade when calling other routines.
+
+§2 Involved and affected projects:
+
+The grammar of Reactions Language and the code generation can be found in the project 'tools.vitruv.dsls.reactions'. It extends the base grammar 'MirBase', which can be found in the project 'tools.vitruv.dsls.mirbase'. There also exists a ui project for editor related additions and a project for tests.
+And there exists a project 'tools.vitruv.extensions.dslruntime.reactions' which provides base classes for the generated reactions, routines, routines facades and executors, containing everything required to map between the reactions to corresponding 'ChangePropagationSpecification's used by Vitruv.
+
+Additionally there exist various projects inside the Vitruv framework which contain .reactions files. Those reactions need to be recompiled (the code generator needs to be freshly run for those) when the proposed modularization changes get applied.
+
+§3 Modularization use-case:
+
+Currently some projects' reactions files are mostly copy-pasted: They share most of their reactions and routines. Only a few reactions and routines were slightly modified, removed, or newly added in the individual projects.
+
+Investigated projects to which the modularization changes shall initially get applied to:
+* tools.vitruv.applications.pcmjava.pojotransformations.pcm2java
+* tools.vitruv.applications.pcmjava.ejbtransformations.pcm2java
+* tools.vitruv.applications.pcmjava.depinjecttransofmrations.pcm2java
+Each of those projects contains one .reactions file, mostly sharing its contents with those of the other projects.
+
+The idea is to move the common contents from the individual projects into a separate .reactions file in a separate project ('tools.vitruv.applications.pcmjava.common') and let the individual projects refer to that.
+
+§4 Requirements:
+
+Analysing the shared contents of the individual projects listed above revealed that:
+1) Due to the amount of common reactions it makes sense to not only share common routines (this was the initial idea), but also common reactions.
+2) There are some occurrences of common reactions and routines referencing a routine which was modified in the individual projects. In order be able to move those common reactions and routines into the common project, it makes sense to also introduce some kind of 'override' concept. This would allow to add some stub or default version of the referenced routine into the common project, allowing the other common reactions and routines to reference it, and then replace (override) its implementation inside the individual projects.
+3) As per request, the imported external routines should be usable in the same way as if they were directly included in the reactions segment. This means: When possible without name clashes, there should be no requirement to use qualified routine names (ex. no <ReactionsSegmentName>.<RoutineName>) when calling an imported routine.
+Considering the above use-case, as well as similar use-cases in other Vitruv applications, there are currently no large import hierarchies (many imports and/or deep hierarchies with many transitive imports) expected. So issues due to name-clashes can in most cases be resolved by simply renaming one of the conflicting elements. So this seems to be a reasonable default behavior.
+
+§5 Additional design decisions:
+
+1) Instead of always importing both, reactions and routines, it will also be possible to only import the routines of a specified reactions segment.
+2) In case name clashes with or between imported routines can not be prevented, there will be a possibility to use imported routines via qualified names (routine name prefixed by imported reactions segment name), making it possible to resolve these conflicts.
+This might especially be useful in case there are name clashes between imports and one doesn't have control over the imported reactions segments.
+As per request, the usage of imported routines by qualified names will not be available by default, but instead there will be an optional flag at the import declaration which toggles between using simple names (default) and qualified names.
+
+Regarding handling of transitive imports, the following decisions were made:
+
+3) Cyclic imports are not allowed.
+4) There can be only one import for the reactions of a reactions segment inside the whole import hierarchy (= tree of all imports, including transitive imports). This limitation guarantees that there is exactly one path inside the import hierarchy from the root to the imported reaction. And all overrides affecting this reaction (overrides of the reaction itself, and overrides of routines used by the this reaction or its overrides) lay on this path. (Avoids the 'diamond inheritance problem'.)
+5) As reaction names are already unique inside reactions segments, and reactions will currently only be referenced inside override declarations, and those always contain the reaction's name alongside with the name of its reactions segment, there is currently no need to enforce unique reaction names across imports.
+
+Regarding transitive routine imports:
+
+6) When importing a reactions segment without using qualified names it 'behaves like inheritance', meaning:
+	6.1) The routines of the imported reactions segment, as well as all routines which were transitively imported without using qualified names, will be usable by their simple names (see §4.3). Any name-clashes caused by routines which were transitively imported without using qualified names will affect the imported reactions segment as a whole: There will be no possibility to exclude or only import the transitively imported routines with qualified names.
+	6.2) Any routines which were transitively imported using qualified names will be accessible via the same qualified names in the importing reactions segment. And calls to these routines will include the overrides of the imported reactions segment.
+7) When importing a reactions segment with qualified names all the transitively imported routines will be accessible in the following way:
+	7.1) Routines which were imported transitively without using qualified names will be usable under the name of the imported reactions segment: <ImportedSegmentName>.<RoutineName>
+	7.2) Routines which were imported transitively using qualified names will be usable via the qualified name describing the path to the first reactions segment either importing the routine without using qualified names, or containing the routine: <ImportedSegmentName>.<SegmentName>+.<RoutineName>
+
+8) Considering the scenario of certain common routines being used by various other reactions segments, it will be possible for multiple reactions segments inside the import hierarchy to import, override and use the routines of the same common reactions segment. In order to avoid unexpected behavioral changes in the reactions and routines of other reactions segments in the same import hierarchy, overrides of imported routines will only affect the reactions and routine calls of the reactions segment declaring the override.
+9) However, considering the scenario that one actually wants to change the behavior of reactions and routines of other reactions segments by overriding a routine of a transitively imported reactions segment (deeper than one level inside the import hierarchy): One will be able to do so by explicitly specifying the path inside the import hierarchy to the reactions segment containing the routine when declaring an override. This override will then only affect reactions and routine calls along this path.
+Example (for simplicity all imports are using qualified names): Hierarchy A->B->C. A can declare an override for a routine of 'B.C', which will then affect calls from A to B.C, B to C, and calls from A to B if those result in calls from B to C. However, any calls to C from other branches inside the import hierarchy won't be affected by this override: If A for example also imports C directly, then calls from A to C won't be affected. Same goes for when A imports A->D->C: Any calls from A->D, A->D.C, and D->C won't be affected.
+
+# Language additions:
+
+* Added an import section inside reactions segments, which allows imports of other reactions segments in the form of: 'import' ['routines'] <ReactionsSegmentName> ['using qualified names']
+	* The keyword 'routines' determines whether only the routines shall get imported (see §5.1).
+	* The key phrase 'using qualified names' determines whether the routines of the imported reactions segment will be referable via simple names, or whether they will instead be referable via qualified names (starting with the name of the imported reactions segment). See also the behavior of transitive imports in §5.6 and §5.7.
+* Added optional syntax elements to reactions and routines, which allow specifying the reactions segment, and optionally an path inside the import hierarchy (see §5.9), they are overriding the reaction or routine of: [[<ImportPath>.]<ReactionsSegmentName>::] <Reaction/Routine Name>'
+* 
+
+# Validation additions / changes:
+
+* 
+
+# Implementation:
+
+* The imported reactions and routines are not actually getting included in the reactions segment importing them, but only getting referenced. So there is no duplicate code being generated for the imported reactions and routines.
+* Reactions added to executor, overrides replaced
+* Routines Facades inheritance hierarchy for all reactions segments specified via imports, and for all transitive reactions segments specified as path in the override declarations.
+* Routines added to RoutinesFacade
+* ..
+
+# Open Discussion:
+To import of transitive routines (§5.6):
+* advantage: no need to have duplicate import declarations when basically 'extending' another segment
+  * useful for simple/small import hierarchies
+* disadvantage: more potential for naming conflicts for slightly more complex import hierarchies, resulting in having to use qualified names for imports one didn't really want to use qualified names for
+  * Example: A->B-q->C (A->B without qualified names, B->C with qualified names)
+    * A gets access to routines of B, and can access routines of C (including B's overrides) via C.routine
+    * But: A cannot import C to access C's original routines (without B's overrides), neither with nor without qualified names (assuming there were naming conflicts in B which caused C to be imported via qualified names there in the first place)
+	* Solution: Either have B->C use no qualified names (but: there might be a name-clash which caused B to use qualified names here in the first place), or let A->B use qualified names (something one did not want as default behavior..)
+* Alternatives:
+  1) Don't include transitively imported routines directly, but allow them to be imported separately:
+    * Example: A->B-q->C from above
+	  * A only gets access to routines of B by default
+	    * Open question: If there is also an import B->D (without qualified names), should routines of D get included into A directly by default, or should it also only be included if explicitly imported (to mimic the behavior of imports using qualified names)?
+	  * A can declare an import for B.C (with or without qualified names, depending on potential name-clashes), to use routines of C including B's overrides. If using qualified names the routines get accessed by writing B.C.routine
+	    * Possible addition here: Let imports using qualified names and containing a path define an alias (import B.C as C), and then usage by C.routine
+		* But open question then: How to handle aliases of transitive imports?
+		  * Actually: Alias only makes sense for imports using qualified names, and transitive imports using qualified names are not included with this proposal: So no issue.
+	  * A can declare an import for C to use C's original routines, this is even possible additionally to the import of B.C (due to the possibility for one or both of them to use qualified names)
+  2) Allow import of A by using an alias, example: import A as "AOriginal" using qualified names
+  3) When importing A->B, maybe always allow usage via qualified names (B.routine), and by that also usage of B.C.routine? Would solve this problem as well.
+    * Consider: When importing A->B and then importing A-q->B.C (usage via B.C.routine), qualified access to B.routine will also be available currently due to the way this is implemented. This might potentially nullify the point of not having qualified access by default..
+
+
+
+
+
+
+
+
+
+
