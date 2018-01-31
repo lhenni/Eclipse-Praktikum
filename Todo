@@ -2,7 +2,6 @@ TODO:
 # later:
 * apply to pcm2java project
 * maybe add additions to reactions generator/builder? (fluent builder)
-* rebase with master branch
 * test if formatting works after rebase (if it doesn't, not that important)
 * maybe add formatter entries for newly added elements
 * optional: add tests related to changes
@@ -11,188 +10,174 @@ TODO:
 * get tests to pass
   * tests seem to run fine if started as plugin tests from within plugin eclipse instance
 * error when auto complete on regular import -> check if this is also the case with the unmodified reactions language 
-* check the references to the ReactionsFile added in the generator: those might no longer be needed and could be reverted to reduce diff
-* moving common override fragment stuff into shared fragment results in duplicate fields in the generated package
-  * also: Reaction will extend ReactionsSegmentOverride, is there a way to simply include the contents?
-ReactionsSegmentOverride:
-	(overriddenImportPath=ReactionsImportPath)? overriddenReactionsSegment=[ReactionsSegment];
-Reaction:
-	(documentation=ML_COMMENT)?
-	'reaction' (ReactionsSegmentOverride '::')? (name=ValidID)? '{'
-		trigger=Trigger
-		callRoutine=ReactionRoutineCall
-	'}';
-  * this might no longer be an issue: reactions and routines use different syntax now for the overrides
 
 
 # now, safe:
-* no cyclic imports: cannot import self directly or indirectly by importing another segment
-* validation: check for name-clashes in included routines
-* validation: check for name-clashes in included routines facades
-  
-* add 'using qualified name' flag to import: using field instead of directly including
-* directly include imported routines in local routines facade instead of via field
-  * if name clash -> error
-    * also check for name clashes between imports -> error
-  * also include transitive imports: if imported without qualified names -> directly, if imported with qualified names -> as field
-  * optional: maybe it can forward the facade request to the the providers of the imported segments when no overrides exist
-    * result: smaller provider implementation?
+* validation: when overriding routine, separate validation from matching name and matching parameters
+  * so if name matches, but parameters don't, show expected parameters from the overridden routine with that name
+    * currently it shows the current parameters of the override routine
+
+* routine overridden path doesn't use scoping because it is a raw list..
+  * ReactionsImportPath: Which one to use? Can the first one use scoping (instead of only content proposal)?
+	* segments += ValidID ('.' segments += ValidID)*;
+	* ValidID ('.' ValidID)*;
+	* in the first case: 2 ReactionsImportPath classes: dslruntime and model element; both basically representing the same thing.. idea for other name for one of them?
+	* maybe add dependency for xtext.naming package in dslruntime and use QualifiedName everywhere instead?
+  -> done: overriddenImportPath is a List<String> of segments now, directly included in the routine (no separate type)
+    * !!! doesn't use scoping..
 	
-* RoutinesFacadeProvider interface instead of method inside AbstractExecutor, pass that around instead
-  * implemented either by separate class or by executor
-  * Pass routines facades around? Or pass execution/call path around and let everyone request the routine facade for that himself?
-    * Use already existing CallHierarchy for that?
-
-* allow importing of routines only
-  * requires different validation rules?
-    * it might be possible to allow importing routines even if importing reactions as a whole is not allowed
-
-* no duplicate reactions imports, not even at root
-  * so that the there exists only one path in the import hierarchy for an imported reaction
-  * overriding of transitive reactions/routines via: B.A::Reaction/RoutineName (no import for B.A required/possible!)
-  
-  * Example: C->B->A
-	* additional reactions import C->A, C->B, C->D->A, or C->D->B  => error
-	* (import of routines-only allowed however)
-	* reaction from A executed, asks C for A facade with no call-hierarchy (reaction is start of call hierarchy)
-	  * C knows that reaction from A was imported via C->B->A, and therefore that there exists a facade B.A
-	  * if C overrides any routines in B.A, it has created an facade C.B.A extending B.A -> return that
-	  * else: return B.A (could also be done by forwarding the request to facade provider of B)
   
 # now, unsafe:
-* !!! do scopes get called while cross-refs cannot be resolved yet?
-  * if yes: problem to scope for reaction and routine overrides which reference transitively imported reactions/routines!
-  * currently reaction overrides scope uses only the direct imports!
-	* consider: A->B->C, and C::reactionName
-	* A cannot import C, because duplicate reaction imports are forbidden
-  * -> possible solution: parse string (ValidId, QualifiedName/ReactionsImportPath) instead of using cross-ref
-    * but then: no auto-completion, etc..
-  * -> possible solution: maybe if scoping is only sometimes called while cross-refs cannot be resolved, it still works when called and cross-refs can be resolved
 
 * suggest lower or upper case reactions segment names, similar to reactions and routines?
   * currently/now: warning if there is a reactions segment found with a matching name regardless of upper/lower case first character
   * duplicate named reactions segments can lead to conflicts: lower-case name is used for package names
 	* use errors instead of warnings when finding similarly named reactions segment globally?
-* !!! renamed executionState -> reactionExecutionState variable in facade! needs to be updated everywhere -> check if correctly updated
-* !!! renamed calledBy -> caller variable in facade! needs to be updated everywhere -> check if correctly updated
+  * currently formatted reactions segments name returns upper-case variant: use lower-case?
+    * lower case looks nicer for included routines facades, and is the one currently used for lots of reactions segments, and is used for the package name
+	* Upper case looks similar to class names
+
+* ReactionsLanguageUtil.getFormattedName: Really required to first use parsed name? Currently this might only be used by validator and by ui project inside OutlineTreeProvider
 
 * overriding currently requires original reactions segment name: maybe somehow allow overriding of routines without qualified names (or partly qualified due to transitive qualified-name import)?
   * allow '::routineName' (no segment/path) for included routines?
     * only 'routineName' would lead to name clash, because it is no recognised as override
 		* add 'override' keyword?
 
-* class names generators: add 'private static val PACKAGE_SEPARATOR = ".";' and use that everywhere instead?
-  
-* ReactionsLanguageUtil.getFormattedName: Really required to first use parsed name? Currently this might only be used by validator and by ui project inside OutlineTreeProvider
-
 * Consider reactions import A->B->C
   * (regardless of if B overrides reaction of C)
-  * A wants to override that reaction, should it have to use C::reaction (current behavior), or B::reaction?
+  * A wants to override that reaction, should it have to use 'C::reaction' (current behavior), or 'B::reaction', or maybe '::reaction' ?
     * with B::reaction, A wouldn't need to know where the reaction originally came from
 	  * 'inheritance behavior': the C reactions are considered to be part of B now from A's point of view
 	* but: the behavior of the reactions of C depend on routines in C, which need to be overridden via C::routine anyways
 	  * so in the end A has to know where which reaction comes from anyways
+	* also: currently duplicate reaction names are allowed
+
+* signature comparison: compare parameter types of routines directly, instead of string comparison?
+
+
 
 # Questions:
-* validator -> getRoutineSignature -> metaclass.javaClassName safe/good enough?
-  * Does not include the special cases from InputTypesPackage (see ParameterGenerator)
-* can reactions trigger other reactions? maybe due to the model changes they apply?
-  * if yes, does vitruv execute the reaction for this change before the previous reaction is finished executing?
-	* if yes: need to also capture and restore facade state before and after reaction execution (like I am currently doing)
-		* maybe also add code comment explaining then why this is/might be needed there
-* ReactionsImportPath: Which one to use? Can the first one use scoping (instead of only content proposal)?
-	* segments += ValidID ('.' segments += ValidID)*;
-	* ValidID ('.' ValidID)*;
-	* in the first case: 2 ReactionsImportPath classes: dslruntime and model element; both basically representing the same thing.. idea for other name for one of them?
-	* maybe add dependency for xtext.naming package in dslruntime and use QualifiedName everywhere instead?
+
+  
+---------
+
 
 # optional:
 * make import of routines-only the default, and require 'import reactions <segment>' when importing reactions AND routines?
-* maybe later: is it possible to create facades once, and pass around the execution state and called-by parameters?
-  * but: same routine might require different facade depending on who called it / call-path
-  * also: facade methods cannot have additional parameters, because those would be visible from inside the reactions/routines code blocks
-* maybe: is it possible to lazily initialize the routine facade fields, but still access them like field (and not like methods) inside reactions code blocks? maybe via xtend @Lazy ?
 * maybe associate routines facade fields with original segment? so open declaration opens the original segment with that name, and not the one overriding (importing) it
   * check if associations are required to keep that way, due to code generation relying on it to determine affected files?
-* maybe not at all: Implement imports without qualified names via sequence of inheritance?
-  * Would internally require one RoutinesFacade class per import and chaining those
-  * Advantage: Not generating duplicate methods in the facade, which could simply be referenced when using inheritance
 * feature idea: allow specifying an import name/alias when importing using qualified names, and then allow duplicate imports, as long as the alias is different:
   * Would allow importing a reactions segment again to access its original routines, or use them with different overrides: B->A, B->A as A_original, or B->A as A2 and then different overrides A2::routine
+* feature: possibility to call overridden routine/reaction from overriding routine/reaction
+  * maybe via implicit routine called 'super' or 'base': super(), super(a, b, c)
+  * provided additionally to the routinesFacade, via extension, inside the userExecution
+  * But: what about override hierarchy?
+    * currently the base routine/reaction gets overridden multiple times, and the override top-most in the import hierarchy gets used
+    * should 'super'/'base' call the base overridden routine/reaction, or the next override routine one deeper in the override hierarchy
+* allow omitting routine action?
+  * useful when overriding a routine with the intent to 'disable' it
+* allow 'empty' reaction (no trigger and no callRoutine):
+  * useful when overriding a routine with the intent to 'disable' it
 
 # Done:
-* Wrote down specification.
-  * Also made some changes to the previously discussed behavior of importing of transitively imported routines.
-  * And that imports are no longer required when overriding reactions/routines from transitively imported segments (no 'import A.B').
-  * And that reactions need to be on a single path inside the import hierarchy.
-* check if direct self-import is already not possible due to scoping -> correct, not possible
-* move language utility methods from ReactionsLanguageHelper into util package or similar
-  * and then export that instead for use in ui project
-* validation: require same model pair when importing something
-* validation: no override of non-existent reactions/routines (compare signatures for routines, names for reactions)
----
-* language change: reactions names are no longer optional (required for overrides)
-  * previously there could only exist one reaction without name anyways..
-* language change: forbid routine names starting with _ to prevent name clashes with internal (not visible) methods of the routines facade
+* no cyclic imports: cannot import self directly or indirectly by importing another segment
+* validation: check for name-clashes in included routines
+* validation: check for name-clashes in included routines facades
+* validation: check for duplicate imported reactions
+* only generating classes for 'complete' reactions segments, reactions, routines
+
+* routines facade state moved into separate class and shared by all facades in the same import hierarchy
+  * easier cleanup of state after usage
+  * less redundant state copied in all the different facades
+  * the facades provider creates and stores the shared state and passes it to all the created facades
+    * Alternative possible: Rename RoutinesFacadesProvider to RoutinesFacadesHierarchy (or similar) and let the facades request the execution state from it
+	  * the provider has to create and store the state anyways already, would make this responsibility clearer..
+	  
+* routines don't need to set/capture/restore reaction execution state currently (only caller), but do it anways?
+  * allows standalone creation and execution of routines, without a reaction previously having set the reaction execution state..
+  * nothing limits routines to only being created by reactions currently..
 
 # To test:
 * validation: require same model pair when importing something
 * validation: no override of non-existent reactions/routines (compare signatures for routines, names for reactions)
 * language change: reactions names are no longer optional (required for overrides)
 * language change: forbid routine names starting with _ to prevent name clashes with internal (not visible) methods of the routines facade
+* default indexing doesn't index cross-refs that reference an object in the same resource: Problem?
+  * TODO: test if the import hierarchy can be determined without issues with a transitive import pointing to a segment that is in the same resource as the imported segment
+* TODO: properly test all specified behavior
+
+# Tested:
 
 
 ERRORS:
-1) NPE during Project>Clean (or build due to file save might trigger this as well) with open editor window
-* this code was completely changed, might no longer be an issue
-1    [Worker-12] ERROR org.eclipse.xtext.xbase.jvmmodel.JvmModelAssociator  - Error calling inferrer
+
+1) while typing reaction body:
+
+reaction Base::CreateRootTest {
+	after element minimal
+}
+* somehow related to label provider? .. we are using the default here
+
+!ENTRY org.eclipse.jface 4 2 2018-01-30 17:19:59.714
+!MESSAGE Problems occurred when invoking code from plug-in: "org.eclipse.jface".
+!STACK 0
 java.lang.NullPointerException
-	at tools.vitruv.dsls.reactions.codegen.helper.ReactionsLanguageHelper.lambda$6(ReactionsLanguageHelper.java:334)
-	at org.eclipse.xtext.xbase.lib.IteratorExtensions.exists(IteratorExtensions.java:263)
-	at org.eclipse.xtext.xbase.lib.IterableExtensions.exists(IterableExtensions.java:222)
-	at tools.vitruv.dsls.reactions.codegen.helper.ReactionsLanguageHelper.findImportedReactionsSegmentRoot(ReactionsLanguageHelper.java:336)
-	at tools.vitruv.dsls.reactions.codegen.helper.ReactionsLanguageHelper.lambda$7(ReactionsLanguageHelper.java:342)
-	at org.eclipse.xtext.xbase.lib.internal.FunctionDelegate.apply(FunctionDelegate.java:42)
-	at com.google.common.collect.Lists$TransformingRandomAccessList$1.transform(Lists.java:651)
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:47)
-	at org.eclipse.xtext.xbase.lib.IteratorExtensions.findFirst(IteratorExtensions.java:107)
-	at org.eclipse.xtext.xbase.lib.IterableExtensions.findFirst(IterableExtensions.java:80)
-	at tools.vitruv.dsls.reactions.codegen.helper.ReactionsLanguageHelper.findImportedReactionsSegmentRoot(ReactionsLanguageHelper.java:347)
-	at tools.vitruv.dsls.reactions.codegen.helper.ReactionsLanguageHelper.getImportedReactionsSegmentRoot(ReactionsLanguageHelper.java:317)
-	at tools.vitruv.dsls.reactions.codegen.classgenerators.ImportedRoutinesFacadeClassGenerator.lambda$1(ImportedRoutinesFacadeClassGenerator.java:56)
-	at org.eclipse.xtext.xbase.lib.ObjectExtensions.operator_doubleArrow(ObjectExtensions.java:139)
-	at tools.vitruv.dsls.reactions.codegen.classgenerators.ImportedRoutinesFacadeClassGenerator.generateBody(ImportedRoutinesFacadeClassGenerator.java:79)
-	at tools.vitruv.dsls.reactions.jvmmodel.ReactionsLanguageJvmModelInferrer.lambda$0(ReactionsLanguageJvmModelInferrer.java:87)
-	at org.eclipse.xtext.xbase.jvmmodel.JvmModelAssociator$1.run(JvmModelAssociator.java:397)
-	at org.eclipse.xtext.xbase.jvmmodel.JvmModelAssociator.installDerivedState(JvmModelAssociator.java:407)
-	at org.eclipse.xtext.resource.DerivedStateAwareResource.installDerivedState(DerivedStateAwareResource.java:242)
-	at org.eclipse.xtext.xbase.resource.BatchLinkableResource.getContents(BatchLinkableResource.java:148)
-	at org.eclipse.xtext.xbase.typesystem.internal.LogicalContainerAwareBatchTypeResolver.getEntryPoints(LogicalContainerAwareBatchTypeResolver.java:44)
-	at org.eclipse.xtext.xbase.typesystem.internal.DefaultBatchTypeResolver.getTypeResolver(DefaultBatchTypeResolver.java:84)
-	at org.eclipse.xtext.xbase.typesystem.internal.CachingBatchTypeResolver$1.get(CachingBatchTypeResolver.java:49)
-	at org.eclipse.xtext.xbase.typesystem.internal.CachingBatchTypeResolver$1.get(CachingBatchTypeResolver.java:46)
-	at org.eclipse.xtext.util.OnChangeEvictingCache.get(OnChangeEvictingCache.java:77)
-	at org.eclipse.xtext.xbase.typesystem.internal.CachingBatchTypeResolver.doResolveTypes(CachingBatchTypeResolver.java:46)
-	at org.eclipse.xtext.xbase.typesystem.internal.AbstractBatchTypeResolver.resolveTypes(AbstractBatchTypeResolver.java:69)
-	at org.eclipse.xtext.xbase.resource.BatchLinkingService.resolveBatched(BatchLinkingService.java:71)
-	at org.eclipse.xtext.xbase.resource.BatchLinkableResource.resolveLazyCrossReferences(BatchLinkableResource.java:165)
-	at org.eclipse.xtext.EcoreUtil2.resolveLazyCrossReferences(EcoreUtil2.java:498)
-	at org.eclipse.xtext.builder.clustering.ClusteringBuilderState.doUpdate(ClusteringBuilderState.java:230)
-	at org.eclipse.xtext.builder.builderState.AbstractBuilderState.update(AbstractBuilderState.java:116)
-	at org.eclipse.xtext.builder.impl.XtextBuilder.doBuild(XtextBuilder.java:287)
-	at org.eclipse.xtext.builder.impl.XtextBuilder.fullBuild(XtextBuilder.java:319)
-	at org.eclipse.xtext.builder.impl.XtextBuilder.build(XtextBuilder.java:155)
-	at org.eclipse.core.internal.events.BuildManager$2.run(BuildManager.java:735)
+	at org.eclipse.jface.viewers.DelegatingStyledCellLabelProvider.update(DelegatingStyledCellLabelProvider.java:107)
+	at org.eclipse.jface.viewers.ViewerColumn.refresh(ViewerColumn.java:141)
+	at org.eclipse.jface.viewers.AbstractTreeViewer.doUpdateItem(AbstractTreeViewer.java:946)
+	at org.eclipse.jface.viewers.AbstractTreeViewer$UpdateItemSafeRunnable.run(AbstractTreeViewer.java:117)
 	at org.eclipse.core.runtime.SafeRunner.run(SafeRunner.java:42)
-	at org.eclipse.core.internal.events.BuildManager.basicBuild(BuildManager.java:206)
-	at org.eclipse.core.internal.events.BuildManager.basicBuild(BuildManager.java:246)
-	at org.eclipse.core.internal.events.BuildManager$1.run(BuildManager.java:301)
+	at org.eclipse.ui.internal.JFaceUtil.lambda$0(JFaceUtil.java:44)
+	at org.eclipse.jface.util.SafeRunnable.run(SafeRunnable.java:173)
+	at org.eclipse.jface.viewers.AbstractTreeViewer.doUpdateItem(AbstractTreeViewer.java:1025)
+	at org.eclipse.jface.viewers.StructuredViewer$UpdateItemSafeRunnable.run(StructuredViewer.java:475)
 	at org.eclipse.core.runtime.SafeRunner.run(SafeRunner.java:42)
-	at org.eclipse.core.internal.events.BuildManager.basicBuild(BuildManager.java:304)
-	at org.eclipse.core.internal.events.BuildManager.basicBuildLoop(BuildManager.java:360)
-	at org.eclipse.core.internal.events.BuildManager.build(BuildManager.java:383)
-	at org.eclipse.core.internal.events.AutoBuildJob.doBuild(AutoBuildJob.java:142)
-	at org.eclipse.core.internal.events.AutoBuildJob.run(AutoBuildJob.java:232)
-	at org.eclipse.core.internal.jobs.Worker.run(Worker.java:56)
-	
-2) 
+	at org.eclipse.ui.internal.JFaceUtil.lambda$0(JFaceUtil.java:44)
+	at org.eclipse.jface.util.SafeRunnable.run(SafeRunnable.java:173)
+	at org.eclipse.jface.viewers.StructuredViewer.updateItem(StructuredViewer.java:2159)
+	at org.eclipse.jface.viewers.AbstractTreeViewer.createTreeItem(AbstractTreeViewer.java:840)
+	at org.eclipse.jface.viewers.AbstractTreeViewer.lambda$0(AbstractTreeViewer.java:817)
+	at org.eclipse.swt.custom.BusyIndicator.showWhile(BusyIndicator.java:70)
+	at org.eclipse.jface.viewers.AbstractTreeViewer.createChildren(AbstractTreeViewer.java:792)
+	at org.eclipse.jface.viewers.TreeViewer.createChildren(TreeViewer.java:595)
+	at org.eclipse.jface.viewers.AbstractTreeViewer.createChildren(AbstractTreeViewer.java:763)
+	at org.eclipse.jface.viewers.AbstractTreeViewer.internalExpand(AbstractTreeViewer.java:1624)
+	at org.eclipse.jface.viewers.AbstractTreeViewer.setSelectionToWidget(AbstractTreeViewer.java:2490)
+	at org.eclipse.jface.viewers.StructuredViewer.setSelectionToWidget(StructuredViewer.java:1759)
+	at org.eclipse.jface.viewers.AbstractTreeViewer.setSelectionToWidget(AbstractTreeViewer.java:2959)
+	at org.eclipse.jface.viewers.StructuredViewer.setSelection(StructuredViewer.java:1715)
+	at org.eclipse.jface.viewers.TreeViewer.setSelection(TreeViewer.java:1075)
+	at org.eclipse.jface.viewers.Viewer.setSelection(Viewer.java:380)
+	at org.eclipse.xtext.ui.editor.outline.actions.OutlineWithEditorLinker.selectInTreeView(OutlineWithEditorLinker.java:131)
+	at org.eclipse.xtext.ui.editor.outline.actions.OutlineWithEditorLinker$TextListener.selectionChanged(OutlineWithEditorLinker.java:72)
+	at org.eclipse.jface.text.TextViewer.firePostSelectionChanged(TextViewer.java:2628)
+	at org.eclipse.jface.text.TextViewer.firePostSelectionChanged(TextViewer.java:2576)
+	at org.eclipse.jface.text.TextViewer$5.run(TextViewer.java:2555)
+	at org.eclipse.swt.widgets.Display.runTimer(Display.java:4341)
+	at org.eclipse.swt.widgets.Display.messageProc(Display.java:3419)
+	at org.eclipse.swt.internal.win32.OS.DispatchMessageW(Native Method)
+	at org.eclipse.swt.internal.win32.OS.DispatchMessage(OS.java:2560)
+	at org.eclipse.swt.widgets.Display.readAndDispatch(Display.java:3815)
+	at org.eclipse.e4.ui.internal.workbench.swt.PartRenderingEngine$5.run(PartRenderingEngine.java:1150)
+	at org.eclipse.core.databinding.observable.Realm.runWithDefault(Realm.java:336)
+	at org.eclipse.e4.ui.internal.workbench.swt.PartRenderingEngine.run(PartRenderingEngine.java:1039)
+	at org.eclipse.e4.ui.internal.workbench.E4Workbench.createAndRunUI(E4Workbench.java:153)
+	at org.eclipse.ui.internal.Workbench.lambda$3(Workbench.java:680)
+	at org.eclipse.core.databinding.observable.Realm.runWithDefault(Realm.java:336)
+	at org.eclipse.ui.internal.Workbench.createAndRunWorkbench(Workbench.java:594)
+	at org.eclipse.ui.PlatformUI.createAndRunWorkbench(PlatformUI.java:148)
+	at org.eclipse.ui.internal.ide.application.IDEApplication.start(IDEApplication.java:151)
+	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:196)
+	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:134)
+	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:104)
+	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:388)
+	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:243)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:497)
+	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:653)
+	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:590)
+	at org.eclipse.equinox.launcher.Main.run(Main.java:1499)
+	at org.eclipse.equinox.launcher.Main.main(Main.java:1472)
