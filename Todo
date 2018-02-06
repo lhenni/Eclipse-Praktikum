@@ -1,72 +1,39 @@
 TODO:
 # later:
 * apply to pcm2java project
-* maybe add additions to reactions generator/builder? (fluent builder)
-* test if formatting works after rebase (if it doesn't, not that important)
-* maybe add formatter entries for newly added elements
-* optional: add tests related to changes
-* optional: look into performance?
-* update generated code for other projects inside vitruv
-* get tests to pass
-  * tests seem to run fine if started as plugin tests from within plugin eclipse instance
-* error when auto complete on regular import -> check if this is also the case with the unmodified reactions language 
-
+* add additions to reactions generator/builder? (fluent builder)
+* add tests related to changes
 
 # now, safe:
-* validation: when overriding routine, separate validation from matching name and matching parameters
-  * so if name matches, but parameters don't, show expected parameters from the overridden routine with that name
-    * currently it shows the current parameters of the override routine
 
-* routine overridden path doesn't use scoping because it is a raw list..
-  * ReactionsImportPath: Which one to use? Can the first one use scoping (instead of only content proposal)?
-	* segments += ValidID ('.' segments += ValidID)*;
-	* ValidID ('.' ValidID)*;
-	* in the first case: 2 ReactionsImportPath classes: dslruntime and model element; both basically representing the same thing.. idea for other name for one of them?
-	* maybe add dependency for xtext.naming package in dslruntime and use QualifiedName everywhere instead?
-  -> done: overriddenImportPath is a List<String> of segments now, directly included in the routine (no separate type)
-    * !!! doesn't use scoping..
-	
   
 # now, unsafe:
-
-* suggest lower or upper case reactions segment names, similar to reactions and routines?
-  * currently/now: warning if there is a reactions segment found with a matching name regardless of upper/lower case first character
-  * duplicate named reactions segments can lead to conflicts: lower-case name is used for package names
-	* use errors instead of warnings when finding similarly named reactions segment globally?
-  * currently formatted reactions segments name returns upper-case variant: use lower-case?
-    * lower case looks nicer for included routines facades, and is the one currently used for lots of reactions segments, and is used for the package name
-	* Upper case looks similar to class names
-
-* ReactionsLanguageUtil.getFormattedName: Really required to first use parsed name? Currently this might only be used by validator and by ui project inside OutlineTreeProvider
-
-* overriding currently requires original reactions segment name: maybe somehow allow overriding of routines without qualified names (or partly qualified due to transitive qualified-name import)?
-  * allow '::routineName' (no segment/path) for included routines?
-    * only 'routineName' would lead to name clash, because it is no recognised as override
-		* add 'override' keyword?
-
-* Consider reactions import A->B->C
-  * (regardless of if B overrides reaction of C)
-  * A wants to override that reaction, should it have to use 'C::reaction' (current behavior), or 'B::reaction', or maybe '::reaction' ?
-    * with B::reaction, A wouldn't need to know where the reaction originally came from
-	  * 'inheritance behavior': the C reactions are considered to be part of B now from A's point of view
-	* but: the behavior of the reactions of C depend on routines in C, which need to be overridden via C::routine anyways
-	  * so in the end A has to know where which reaction comes from anyways
-	* also: currently duplicate reaction names are allowed
-
-* signature comparison: compare parameter types of routines directly, instead of string comparison?
-
 
 
 # Questions:
 
-  
+* gemeinsame ChangePropagationSpecification innerhalb eines Projekts beinhaltet alle executors mit dem gleichen Metamodel-Paar
+  * enthält duplizierte Reaktionen, wenn Segmente andere Segmente innerhalb des Projekts importieren
+  * Problem? 
+  * limitiere Import künstlich auf segmente aus anderen Projekten?
+  * generiere eine ChangePropagationSpecification pro Segment (= Executor?), sodass eine Application dann explizit die ChangePropagation auswählen kann, die es verwenden will
+  * keyword um Segmente aus der lokalen ChangePropagationSpecification auszuschließen?
+
+* Conflict between .reactions file inside src folder and .reactions file inside target folder (ex. families2persons project)
+Multiple markers at this line
+- Reactions segment names should start lower case.
+- The type RoutinesFacade is already defined in FamiliesToPersons.reactions.
+- The type RoutinesFacadesProvider is already defined in FamiliesToPersons.reactions.
+- The type ExecutorFamiliesToPersons is already defined in FamiliesToPersons.reactions.
+  * might be unrelated to modularization changes.
+  * project uses only /bin folder, but maybe the maven build of vitruv adds the target folder
+
 ---------
 
 
 # optional:
-* make import of routines-only the default, and require 'import reactions <segment>' when importing reactions AND routines?
 * maybe associate routines facade fields with original segment? so open declaration opens the original segment with that name, and not the one overriding (importing) it
-  * check if associations are required to keep that way, due to code generation relying on it to determine affected files?
+  * doesn't seem to work that simple though..
 * feature idea: allow specifying an import name/alias when importing using qualified names, and then allow duplicate imports, as long as the alias is different:
   * Would allow importing a reactions segment again to access its original routines, or use them with different overrides: B->A, B->A as A_original, or B->A as A2 and then different overrides A2::routine
 * feature: possibility to call overridden routine/reaction from overriding routine/reaction
@@ -79,7 +46,27 @@ TODO:
   * useful when overriding a routine with the intent to 'disable' it
 * allow 'empty' reaction (no trigger and no callRoutine):
   * useful when overriding a routine with the intent to 'disable' it
+  
+* overriding currently requires original reactions segment name: maybe somehow allow overriding of routines without qualified names (or partly qualified due to transitive qualified-name import)?
+  * allow '::routineName' (no segment/path) for included routines?
+    * only 'routineName' would lead to name clash, because it is not recognised as override
+		* add 'override' keyword?
 
+* Consider reactions import A->B->C
+  * (regardless of if B overrides reaction of C)
+  * A wants to override that reaction, should it have to use 'C::reaction' (current behavior), or 'B::reaction', or maybe '::reaction' ?
+    * with B::reaction, A wouldn't need to know where the reaction originally came from
+	  * 'inheritance behavior': the C reactions are considered to be part of B now from A's point of view
+	* but: the behavior of the reactions of C depend on routines in C, which need to be overridden via C::routine anyways
+	  * so in the end A has to know where which reaction comes from anyways
+	* also: currently duplicate reaction names are allowed
+
+* routine signature validation prints full type name currently.. maybe print simpler name here
+* maybe: signature comparison: compare parameter types of routines directly, instead of string comparison?
+* add auto-completion/proposal for overridden reaction names
+* add auto-completion/proposal for overridden routine names/signatures
+* optional: compare performance
+	
 # Done:
 * no cyclic imports: cannot import self directly or indirectly by importing another segment
 * validation: check for name-clashes in included routines
@@ -97,6 +84,15 @@ TODO:
 * routines don't need to set/capture/restore reaction execution state currently (only caller), but do it anways?
   * allows standalone creation and execution of routines, without a reaction previously having set the reaction execution state..
   * nothing limits routines to only being created by reactions currently..
+
+* validation: segment names can no longer start with underscore, so imported routines facades don't conflict with internal facade methods
+* validation: suggesting firstLower reactions segment names now
+
+* added formatter entries for newly added elements
+* reactions import scoping limited to .reactions resources
+* re-generate all projects which contain reactions
+  * müssten eigentlich nur dass addressXrecipients und die familien-persons Projekte sein
+  * -> done
 
 # To test:
 * validation: require same model pair when importing something
@@ -156,6 +152,131 @@ java.lang.NullPointerException
 	at org.eclipse.jface.text.TextViewer$5.run(TextViewer.java:2555)
 	at org.eclipse.swt.widgets.Display.runTimer(Display.java:4341)
 	at org.eclipse.swt.widgets.Display.messageProc(Display.java:3419)
+	at org.eclipse.swt.internal.win32.OS.DispatchMessageW(Native Method)
+	at org.eclipse.swt.internal.win32.OS.DispatchMessage(OS.java:2560)
+	at org.eclipse.swt.widgets.Display.readAndDispatch(Display.java:3815)
+	at org.eclipse.e4.ui.internal.workbench.swt.PartRenderingEngine$5.run(PartRenderingEngine.java:1150)
+	at org.eclipse.core.databinding.observable.Realm.runWithDefault(Realm.java:336)
+	at org.eclipse.e4.ui.internal.workbench.swt.PartRenderingEngine.run(PartRenderingEngine.java:1039)
+	at org.eclipse.e4.ui.internal.workbench.E4Workbench.createAndRunUI(E4Workbench.java:153)
+	at org.eclipse.ui.internal.Workbench.lambda$3(Workbench.java:680)
+	at org.eclipse.core.databinding.observable.Realm.runWithDefault(Realm.java:336)
+	at org.eclipse.ui.internal.Workbench.createAndRunWorkbench(Workbench.java:594)
+	at org.eclipse.ui.PlatformUI.createAndRunWorkbench(PlatformUI.java:148)
+	at org.eclipse.ui.internal.ide.application.IDEApplication.start(IDEApplication.java:151)
+	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:196)
+	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:134)
+	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:104)
+	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:388)
+	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:243)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:497)
+	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:653)
+	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:590)
+	at org.eclipse.equinox.launcher.Main.run(Main.java:1499)
+	at org.eclipse.equinox.launcher.Main.main(Main.java:1472)
+	
+2) * error when auto complete on regular import -> might also be the case without modularization changes
+1    [main] WARN  org.eclipse.xtext.ui.editor.contentassist.AbstractJavaBasedContentProposalProvider  - Error in polymorphic dispatcher : null
+java.util.ConcurrentModificationException
+	at java.util.HashMap$HashIterator.nextNode(HashMap.java:1429)
+	at java.util.HashMap$KeyIterator.next(HashMap.java:1453)
+	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:47)
+	at com.google.common.collect.Iterators$6.computeNext(Iterators.java:616)
+	at com.google.common.collect.AbstractIterator.tryToComputeNext(AbstractIterator.java:145)
+	at com.google.common.collect.AbstractIterator.hasNext(AbstractIterator.java:140)
+	at com.google.common.collect.Iterators$6.computeNext(Iterators.java:615)
+	at com.google.common.collect.AbstractIterator.tryToComputeNext(AbstractIterator.java:145)
+	at com.google.common.collect.AbstractIterator.hasNext(AbstractIterator.java:140)
+	at com.google.common.collect.MultitransformedIterator.hasNext(MultitransformedIterator.java:47)
+	at org.eclipse.xtext.scoping.impl.ImportScope.getAliasedElements(ImportScope.java:119)
+	at org.eclipse.xtext.scoping.impl.ImportScope.getAllLocalElements(ImportScope.java:92)
+	at org.eclipse.xtext.scoping.impl.ImportScope.getAllElements(ImportScope.java:71)
+	at org.eclipse.xtext.scoping.impl.ImportScope.getAllElements(ImportScope.java:70)
+	at org.eclipse.xtext.scoping.impl.ImportScope.getAllElements(ImportScope.java:70)
+	at org.eclipse.xtext.ui.editor.contentassist.AbstractJavaBasedContentProposalProvider$ReferenceProposalCreator.queryScope(AbstractJavaBasedContentProposalProvider.java:166)
+	at org.eclipse.xtext.xbase.ui.contentassist.XbaseReferenceProposalCreator.queryScope(XbaseReferenceProposalCreator.java:318)
+	at org.eclipse.xtext.ui.editor.contentassist.AbstractJavaBasedContentProposalProvider$ReferenceProposalCreator.lookupCrossReference(AbstractJavaBasedContentProposalProvider.java:147)
+	at org.eclipse.xtext.xbase.ui.contentassist.XbaseReferenceProposalCreator.lookupCrossReference(XbaseReferenceProposalCreator.java:134)
+	at org.eclipse.xtext.ui.editor.contentassist.AbstractJavaBasedContentProposalProvider$ReferenceProposalCreator.lookupCrossReference(AbstractJavaBasedContentProposalProvider.java:133)
+	at org.eclipse.xtext.ui.editor.contentassist.AbstractJavaBasedContentProposalProvider.lookupCrossReference(AbstractJavaBasedContentProposalProvider.java:261)
+	at org.eclipse.xtext.ui.editor.contentassist.AbstractJavaBasedContentProposalProvider.lookupCrossReference(AbstractJavaBasedContentProposalProvider.java:255)
+	at org.eclipse.xtext.ui.editor.contentassist.AbstractJavaBasedContentProposalProvider.lookupCrossReference(AbstractJavaBasedContentProposalProvider.java:233)
+	at org.eclipse.xtext.xbase.ui.contentassist.XbaseProposalProvider.lookupCrossReference(XbaseProposalProvider.java:282)
+	at tools.vitruv.dsls.mirbase.ui.contentassist.AbstractMirBaseProposalProvider.completeMetamodelImport_Package(AbstractMirBaseProposalProvider.java:25)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:497)
+	at org.eclipse.xtext.util.PolymorphicDispatcher.invoke(PolymorphicDispatcher.java:302)
+	at org.eclipse.xtext.ui.editor.contentassist.AbstractJavaBasedContentProposalProvider.invokeMethod(AbstractJavaBasedContentProposalProvider.java:300)
+	at org.eclipse.xtext.ui.editor.contentassist.AbstractJavaBasedContentProposalProvider.completeAssignment(AbstractJavaBasedContentProposalProvider.java:205)
+	at org.eclipse.xtext.ui.editor.contentassist.AbstractContentProposalProvider$DefaultContentAssistProcessorSwitch.caseAssignment(AbstractContentProposalProvider.java:66)
+	at org.eclipse.xtext.ui.editor.contentassist.AbstractContentProposalProvider$DefaultContentAssistProcessorSwitch.caseAssignment(AbstractContentProposalProvider.java:1)
+	at org.eclipse.xtext.util.XtextSwitch.doSwitch(XtextSwitch.java:144)
+	at org.eclipse.emf.ecore.util.Switch.doSwitch(Switch.java:53)
+	at org.eclipse.emf.ecore.util.Switch.doSwitch(Switch.java:69)
+	at org.eclipse.xtext.ui.editor.contentassist.AbstractContentProposalProvider$DefaultContentAssistProcessorSwitch.accept(AbstractContentProposalProvider.java:72)
+	at org.eclipse.xtext.ui.editor.contentassist.AbstractContentProposalProvider.createProposals(AbstractContentProposalProvider.java:110)
+	at org.eclipse.xtext.ui.editor.contentassist.AbstractJavaBasedContentProposalProvider.createProposals(AbstractJavaBasedContentProposalProvider.java:275)
+	at org.eclipse.xtext.ui.editor.contentassist.CompletionProposalComputer.exec(CompletionProposalComputer.java:52)
+	at org.eclipse.xtext.ui.editor.contentassist.CompletionProposalComputer.exec(CompletionProposalComputer.java:1)
+	at org.eclipse.xtext.resource.OutdatedStateManager.exec(OutdatedStateManager.java:91)
+	at org.eclipse.xtext.ui.editor.model.XtextDocument$XtextDocumentLocker.internalReadOnly(XtextDocument.java:520)
+	at org.eclipse.xtext.ui.editor.model.XtextDocument$XtextDocumentLocker.priorityReadOnly(XtextDocument.java:485)
+	at org.eclipse.xtext.ui.editor.model.XtextDocument.priorityReadOnly(XtextDocument.java:142)
+	at org.eclipse.xtext.ui.editor.contentassist.RepeatedContentAssistProcessor.computeCompletionProposals(RepeatedContentAssistProcessor.java:111)
+	at org.eclipse.xtext.ui.editor.contentassist.RepeatedContentAssistProcessor.computeCompletionProposals(RepeatedContentAssistProcessor.java:80)
+	at org.eclipse.jface.text.contentassist.ContentAssistant$3.run(ContentAssistant.java:2007)
+	at org.eclipse.core.runtime.SafeRunner.run(SafeRunner.java:42)
+	at org.eclipse.jface.text.contentassist.ContentAssistant.computeCompletionProposals(ContentAssistant.java:2004)
+	at org.eclipse.jface.text.contentassist.CompletionProposalPopup.computeProposals(CompletionProposalPopup.java:560)
+	at org.eclipse.jface.text.contentassist.CompletionProposalPopup.access$7(CompletionProposalPopup.java:555)
+	at org.eclipse.jface.text.contentassist.CompletionProposalPopup$2.run(CompletionProposalPopup.java:489)
+	at org.eclipse.swt.custom.BusyIndicator.showWhile(BusyIndicator.java:70)
+	at org.eclipse.jface.text.contentassist.CompletionProposalPopup.showProposals(CompletionProposalPopup.java:482)
+	at org.eclipse.jface.text.contentassist.ContentAssistant.showPossibleCompletions(ContentAssistant.java:1823)
+	at org.eclipse.jface.text.source.SourceViewer.doOperation(SourceViewer.java:936)
+	at org.eclipse.jface.text.source.projection.ProjectionViewer.doOperation(ProjectionViewer.java:1461)
+	at org.eclipse.ui.texteditor.ContentAssistAction$1.run(ContentAssistAction.java:84)
+	at org.eclipse.swt.custom.BusyIndicator.showWhile(BusyIndicator.java:70)
+	at org.eclipse.ui.texteditor.ContentAssistAction.run(ContentAssistAction.java:81)
+	at org.eclipse.jface.action.Action.runWithEvent(Action.java:473)
+	at org.eclipse.jface.commands.ActionHandler.execute(ActionHandler.java:118)
+	at org.eclipse.ui.internal.handlers.E4HandlerProxy.execute(E4HandlerProxy.java:92)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:497)
+	at org.eclipse.e4.core.internal.di.MethodRequestor.execute(MethodRequestor.java:55)
+	at org.eclipse.e4.core.internal.di.InjectorImpl.invokeUsingClass(InjectorImpl.java:305)
+	at org.eclipse.e4.core.internal.di.InjectorImpl.invoke(InjectorImpl.java:239)
+	at org.eclipse.e4.core.contexts.ContextInjectionFactory.invoke(ContextInjectionFactory.java:132)
+	at org.eclipse.e4.core.commands.internal.HandlerServiceHandler.execute(HandlerServiceHandler.java:152)
+	at org.eclipse.core.commands.Command.executeWithChecks(Command.java:494)
+	at org.eclipse.core.commands.ParameterizedCommand.executeWithChecks(ParameterizedCommand.java:487)
+	at org.eclipse.e4.core.commands.internal.HandlerServiceImpl.executeHandler(HandlerServiceImpl.java:210)
+	at org.eclipse.e4.ui.bindings.keys.KeyBindingDispatcher.executeCommand(KeyBindingDispatcher.java:287)
+	at org.eclipse.e4.ui.bindings.keys.KeyBindingDispatcher.press(KeyBindingDispatcher.java:527)
+	at org.eclipse.e4.ui.bindings.keys.KeyBindingDispatcher.processKeyEvent(KeyBindingDispatcher.java:577)
+	at org.eclipse.e4.ui.bindings.keys.KeyBindingDispatcher.filterKeySequenceBindings(KeyBindingDispatcher.java:385)
+	at org.eclipse.e4.ui.bindings.keys.KeyBindingDispatcher.access$0(KeyBindingDispatcher.java:331)
+	at org.eclipse.e4.ui.bindings.keys.KeyBindingDispatcher$KeyDownFilter.handleEvent(KeyBindingDispatcher.java:88)
+	at org.eclipse.swt.widgets.EventTable.sendEvent(EventTable.java:86)
+	at org.eclipse.swt.widgets.Display.filterEvent(Display.java:1271)
+	at org.eclipse.swt.widgets.Widget.sendEvent(Widget.java:1078)
+	at org.eclipse.swt.widgets.Widget.sendEvent(Widget.java:1103)
+	at org.eclipse.swt.widgets.Widget.sendEvent(Widget.java:1088)
+	at org.eclipse.swt.widgets.Widget.sendKeyEvent(Widget.java:1130)
+	at org.eclipse.swt.widgets.Widget.sendKeyEvent(Widget.java:1126)
+	at org.eclipse.swt.widgets.Widget.wmChar(Widget.java:1547)
+	at org.eclipse.swt.widgets.Control.WM_CHAR(Control.java:4962)
+	at org.eclipse.swt.widgets.Canvas.WM_CHAR(Canvas.java:364)
+	at org.eclipse.swt.widgets.Control.windowProc(Control.java:4843)
+	at org.eclipse.swt.widgets.Canvas.windowProc(Canvas.java:359)
+	at org.eclipse.swt.widgets.Display.windowProc(Display.java:5178)
 	at org.eclipse.swt.internal.win32.OS.DispatchMessageW(Native Method)
 	at org.eclipse.swt.internal.win32.OS.DispatchMessage(OS.java:2560)
 	at org.eclipse.swt.widgets.Display.readAndDispatch(Display.java:3815)
