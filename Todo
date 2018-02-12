@@ -1,32 +1,34 @@
 TODO:
 # later:
 * apply to pcm2java project
+  * done, but:
+    * commons projects needs to export generated files
+	* classpath order of importing projects has to prioritize own generated source files, due to similar named ChangePropagationSpecification in commons projects
 * add additions to reactions generator/builder? (fluent builder)
 * add tests related to changes
 
 # now, safe:
-
+* generate everything in packages with project specific prefix?
+  * projects need to export their generated packages, so others can access their reactions and routines
+  * classpath: local generated files in src-gen folder need to be prioritized over imported files: importedPlugins container needs to be after src-gen source folder..
+  * but: how to get projects prefix? use path of .reactions file as prefix?
+* !!! build order might be important..: when clean+building all projects in eclipse, some importing projects might not get generated correctly, maybe due to build order
+  * but: not consistently reproducable.. parallel clean+build by eclipse?
+  
   
 # now, unsafe:
 
 
 # Questions:
 
-* gemeinsame ChangePropagationSpecification innerhalb eines Projekts beinhaltet alle executors mit dem gleichen Metamodel-Paar
-  * enthält duplizierte Reaktionen, wenn Segmente andere Segmente innerhalb des Projekts importieren
-  * Problem? 
-  * limitiere Import künstlich auf segmente aus anderen Projekten?
+* !!! gemeinsame ChangePropagationSpecification innerhalb eines Projekts beinhaltet alle executors mit dem gleichen Metamodel-Paar
+  * enthält duplizierte Reaktionen, weil XtextResourceSet importierte Reactions-Dateien enthält, selbst wenn diese in anderen Projekten liegen
+  * current workaround: exclude segments from other projects -> ugly
   * generiere eine ChangePropagationSpecification pro Segment (= Executor?), sodass eine Application dann explizit die ChangePropagation auswählen kann, die es verwenden will
-  * keyword um Segmente aus der lokalen ChangePropagationSpecification auszuschließen?
-
-* Conflict between .reactions file inside src folder and .reactions file inside target folder (ex. families2persons project)
-Multiple markers at this line
-- Reactions segment names should start lower case.
-- The type RoutinesFacade is already defined in FamiliesToPersons.reactions.
-- The type RoutinesFacadesProvider is already defined in FamiliesToPersons.reactions.
-- The type ExecutorFamiliesToPersons is already defined in FamiliesToPersons.reactions.
-  * might be unrelated to modularization changes.
-  * project uses only /bin folder, but maybe the maven build of vitruv adds the target folder
+  * keyword 'module' um Segmente aus der ChangePropagationSpecification auszuschließen?
+    * würde auch das classpath 'problem' löse, da dann für das common project keine ChangePropagationSpecification mehr generiert werden müsste
+  
+* NPE due to comments in between matcher, unrelated to modularization
 
 ---------
 
