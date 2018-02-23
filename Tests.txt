@@ -1,0 +1,126 @@
+Test structure:
+
+root -> directSN, direct2SN, directRoutinesQN r qn
+directSN -> transitiveSN, transitiveRoutinesQN r qn
+direct2SN -> transitive3SN, commonRoutines r qn
+directRoutinesQN -> transitive2SN, transitiveRoutinesSN r, transitiveRoutinesQN r qn
+transitiveSN -> commonRoutines r qn
+transitive2SN
+transitive3SN
+transitiveRoutinesSN
+transitiveRoutinesQN
+commonRoutines
+
+-----------------------
+full noQN > full noQN
+full noQN > full QN
+full noQN > routines noQN
+full noQN > routines QN
+full QN > full noQN
+full QN > full QN
+full QN > routines noQN
+full QN > routines QN
+routines noQN > full noQN
+routines noQN > full QN
+routines noQN > routines noQN
+routines noQN > routines QN
+routines QN > full noQN
+routines QN > full QN
+routines QN > routines noQN
+routines QN > routines QN
+-----------------------
+
+Import mechanism:
+
+* execute imported reaction
+* execute transitive imported reaction
+
+* execute imported routine:
+  * noQN
+  * QN
+* execute transitive imported routine from within reaction:
+  * noQN > noQN
+  * noQN > QN
+  * QN > noQN
+  * QN > QN
+* execute transitive imported routine from within reaction:
+  * noQN > noQN
+  * noQN > QN
+  * QN > noQN
+  * QN > QN
+
+* multiple imports:
+  * combining: 2 reactions from 2 different imports + 1 transitive imported reaction
+    * trigger model changes for each reaction
+  * combining: 2 routines from 2 different imports + 1 transitive imported routine
+    * call each routine from root segment
+  
+* import routines only:
+  * trigger model change that would trigger reaction, check that it wasn't called:
+    * direct: routines-only
+	* transitive: full > routines-only
+    * transitive: routines-only > full
+  * call routine, and check that it was executed:
+    * direct: routines-only
+	* transitive: full > routines-only
+    * transitive: routines-only > full
+
+* (transitive) imported segments still working as expected?
+  * trigger imported reaction, check that calls inside imported segment are working
+  * trigger transitive imported reaction, check that calls inside transitive imported segment are working
+  * trigger imported reaction, check that calls from imported segment to transitive imported segment are working
+
+* override reaction: trigger change and check that (only) overriding reaction executed
+* override transitive reaction: trigger change and check that (only) overriding reaction executed
+* override transitive reaction, that was overridden from in-between segment: trigger change and check that (only) overriding reaction executed
+* transitive-only overridden reaction: trigger change and check that (only) the overriding reaction from in-between segment executed
+
+* override routine:
+  * execute routine from root segment, check that overriding routine executed
+  * execute routine from within overridden segment, check that overriding routine executed
+* override transitive routine:
+  * execute routine from root segment, check that overriding routine executed
+  * execute routine from within overridden segment: check that overriding routine executed
+  * execute routine from within segment in-between: check that overriding routine executed
+* override transitive routine, that was also overridden from in-between segment:
+  * execute routine from root segment, check that overriding routine executed
+  * execute routine from within overridden segment: check that overriding routine executed
+  * execute routine from within segment in-between: check that overriding routine executed
+* transitive-only overridden routine:
+  * execute routine from root segment, check that overriding routine executed
+  * execute routine from within overridden segment: check that overriding routine executed
+  * execute routine from within segment in-between: check that overriding routine executed
+
+* also check with different overriddenRoutinesFacades hierarchies: -> override from different segment
+* for each test: also check that the overriding routine uses the correct routines facade: it needs to be able to call lokal routines of the segment it is declared in
+
+TODO:
+* multiple imports of the same routines (at different import paths), with routine-override at one import path:
+  * trigger reaction that calls the same routine along different import paths, check that 2 different routines executed
+
+Validation rules:
+• Fehler: Gleiche Segment-Namen innerhalb einer Reactions-Datei.
+• Fehler: Segment-Namen können nicht länger mit "_" beginnen. ("_" wird in der
+Routinenfacade für interne Methoden verwendet und würde daher kollidieren)
+• Warnung: Segment-Namen sollten mit Kleinbuchstaben beginnen.
+• Warnung: Gleiche Segment-Namen innerhalb aller sichtbaren, externen Segmente.
+• Fehler: Importierte Segmente müssen das gleiche Metamodell-Paar benutzen.
+• Fehler: Mehrmaliges Importieren des gleichen Segments innerhalb eines Segments.
+• Fehler: Keine zyklische Importe: Ein Segment kann sich nicht direkt oder transitiv selber
+importieren.
+• Fehler: Mehrmals importierte Reaktionen eines Segments innerhalb der Importhierarchie.
+• Fehler: Namenskonflikte mit und zwischen importierten Routinen, sowohl für einfache
+Namen, als auch qualifizierte Namen. Schließt die Namen von transitiv importierte Routinen
+mit ein.
+• Fehler: Routinen-Namen können nicht länger mit "_" beginnen. ("_" wird in der
+Routinenfacade für interne Methoden verwendet und würde daher kollidieren)
+• Fehler: Importpfad beim Überschreiben von Routinen ist unvollständig.
+• Fehler: Das Segment für den angegebenen Importpfad beim Überschreiben von Routinen
+kann nicht gefunden werden.
+• Fehler: Es kann keine überschriebene Routine mit dem angegebenen Namen im
+angegebenen Segment gefunden werden.
+• Fehler: Die Parameter der überschreibenden Routine stimmen nicht mit den Parametern der
+überschriebenen Routine überein.
+• Fehler: Es kann keine überschriebene Reaktion mit dem angegebenen Namen im
+angegebenen Segment gefunden werden.
+
