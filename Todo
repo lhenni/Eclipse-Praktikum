@@ -1,37 +1,44 @@
 TODO:
 # later:
-* apply to pcm2java project
-  * done, but:
-    * commons projects needs to export generated files
-	* classpath order of importing projects has to prioritize own generated source files, due to similar named ChangePropagationSpecification in commons projects
 * add additions to reactions generator/builder? (fluent builder)
 * add tests related to changes
 
 # now, safe:
-* generate everything in packages with project specific prefix?
-  * projects need to export their generated packages, so others can access their reactions and routines
-  * classpath: local generated files in src-gen folder need to be prioritized over imported files: importedPlugins container needs to be after src-gen source folder..
-  * but: how to get projects prefix? use path of .reactions file as prefix?
-* !!! build order might be important..: when clean+building all projects in eclipse, some importing projects might not get generated correctly, maybe due to build order
-  * but: not consistently reproducable.. parallel clean+build by eclipse?
-  
-  
+
+* import helper methods: return relative import paths everywhere instead of absolute? absolute paths actually used anywhere?
+* build on github failing due to tests?
+  * tests run fine locally.. at least if reactions files are pre-generated in the tests project
+    * otherwise: class bodies do not get generated
+  * fixed by reordering input reactions files
+	   
 # now, unsafe:
 
+* fluent reaction builder seems incomplete:
+  * specifying called routine parameters? passing routine builder doesn't seem to be sufficient for that..
+  * routine calling another routine? -> via code block somehow
 
 # Questions:
 
-* !!! gemeinsame ChangePropagationSpecification innerhalb eines Projekts beinhaltet alle executors mit dem gleichen Metamodel-Paar
-  * enthält duplizierte Reaktionen, weil XtextResourceSet importierte Reactions-Dateien enthält, selbst wenn diese in anderen Projekten liegen
-  * current workaround: exclude segments from other projects -> ugly
-  * generiere eine ChangePropagationSpecification pro Segment (= Executor?), sodass eine Application dann explizit die ChangePropagation auswählen kann, die es verwenden will
-  * keyword 'module' um Segmente aus der ChangePropagationSpecification auszuschließen?
-    * würde auch das classpath 'problem' löse, da dann für das common project keine ChangePropagationSpecification mehr generiert werden müsste
-  
-* NPE due to comments in between matcher, unrelated to modularization
+* commonalities.ui.tests: ComositeDecomposingCPS works, but not CompositeCPS? Shouldn't the called segment-CPS decompose already?
+  * only difference: order of change-handling of decomposed changes:
+    * change -> combined: for each segment-CPS -> segment-CPS: decompose -> for each decomposed -> executor
+	* change -> combined: decompose -> for each decomposed -> for each segment-CPS -> executor
+	
+	* not a problem when using the CPS of an combined-segment which imports other segments, because the combined-segment's CPS extends decomposing-CPS and therefore there the execution order is like before.
+	
+* Removed AbstractSegmentCPS from dslruntime? -> A few projects then no longer have to depend on dslruntime, in order to use the segment-CPS created by the reactions-language
+  * Or: declare "implements CPS" at concrete segment-CPS another time -> using the reactions CPS (passing to Vitruv) is then independent from deslruntime
+    * But: adding additional processors still depends on dslruntime -> only solvable by moving DecomposingCompositeCPS inside concrete CPS, instead of AbstractReactionsCPS in dslruntime
+
+* fluent reactions builder: Allow segments with no reactions and no routines? (ex. segments that only import other segments) -> done
+
+* cannot disable auto-formatting on save... its not listed in the on-save-actions, but still formats all files when saving
+  * current workaround: closing editor window, popup 'save?' > 'yes', and working in git-compare view ..
+
+* somehow possible to add imports when creating the jvm model? instead of using qualified names..
+  * ImportManager doesn't seem to be available during jvm model creation
 
 ---------
-
 
 # optional:
 * maybe associate routines facade fields with original segment? so open declaration opens the original segment with that name, and not the one overriding (importing) it
@@ -70,42 +77,38 @@ TODO:
 * optional: compare performance
 	
 # Done:
-* no cyclic imports: cannot import self directly or indirectly by importing another segment
-* validation: check for name-clashes in included routines
-* validation: check for name-clashes in included routines facades
-* validation: check for duplicate imported reactions
-* only generating classes for 'complete' reactions segments, reactions, routines
+* validation: split up large imports validation into many smaller ones
+* removed environment CPS + parser, added segment-CPS, executor package-private
+	* updated all projects accordingly.. (large commit message with the actual changes)
+	* commonalities.ui.tests: Creating combined-CPS there now for the tests to properly run without the environment-CPS
+* fluent reactions builder + tests expanded: imports, reaction overrides, routine overrides
+* renamed classes and packages: mir.reactions.<segment>, <segment>ChangePropagationSpecification, ReactionsExecutor
+* added import tests
+------------------------
+Fixed:
+* ReactionsImportPath: allow representing empty path? might need to handle this special case at some places then
+  * done!
+* !!! included routines in imported segments: overrides are not respected properly, because:
+  * A->B->C, C routines included in B facade, A overrides C routines
+    * A.B.C facade created with overridden routines -> works wherever a C facade is requested
+	* however: does not work inside B facade, because there the original routine methods are included -> doesn't used overridden routines facade there
+	* solution: let the routine method call the routine via the routines facade ('as if qualified names were used')
+	* done!
+* !!! overridden routines facade routine methods requesting wrong routines facades: they need to get the routines facade of the overriding segment!
+  * done!
+* passing around of partly import paths in overridden routines facades: ugly?
+  * instead: pass around full import path again, and each overridden facade picks the import path part it needs? (subPath ending with the facade's segment)
+  * done!
+* !!! includes routines not aware of overrides: original routines methods being included.. instead of override ones
+  * Fixed: The fully qualified routine names were not correct.
 
-* routines facade state moved into separate class and shared by all facades in the same import hierarchy
-  * easier cleanup of state after usage
-  * less redundant state copied in all the different facades
-  * the facades provider creates and stores the shared state and passes it to all the created facades
-    * Alternative possible: Rename RoutinesFacadesProvider to RoutinesFacadesHierarchy (or similar) and let the facades request the execution state from it
-	  * the provider has to create and store the state anyways already, would make this responsibility clearer..
-	  
-* routines don't need to set/capture/restore reaction execution state currently (only caller), but do it anways?
-  * allows standalone creation and execution of routines, without a reaction previously having set the reaction execution state..
-  * nothing limits routines to only being created by reactions currently..
-
-* validation: segment names can no longer start with underscore, so imported routines facades don't conflict with internal facade methods
-* validation: suggesting firstLower reactions segment names now
-
-* added formatter entries for newly added elements
-* reactions import scoping limited to .reactions resources
-* re-generate all projects which contain reactions
-  * müssten eigentlich nur dass addressXrecipients und die familien-persons Projekte sein
-  * -> done
 
 # To test:
 * validation: require same model pair when importing something
 * validation: no override of non-existent reactions/routines (compare signatures for routines, names for reactions)
 * language change: reactions names are no longer optional (required for overrides)
 * language change: forbid routine names starting with _ to prevent name clashes with internal (not visible) methods of the routines facade
-* default indexing doesn't index cross-refs that reference an object in the same resource: Problem?
-  * TODO: test if the import hierarchy can be determined without issues with a transitive import pointing to a segment that is in the same resource as the imported segment
-* TODO: properly test all specified behavior
 
-# Tested:
 
 
 ERRORS:
